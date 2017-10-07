@@ -6,6 +6,8 @@ import java.util.*;
 
 /**
  * Created by sami- on 23/09/2017.
+ *
+ *This is core TSP solver
  */
 public class Graph {
     private String filePath;
@@ -13,6 +15,8 @@ public class Graph {
     private int graphOrder;
     private int nbNodes;
     private long duration;
+    private boolean dispPath;
+    private boolean heuristic;
 
     public int getNbNodes() {
         return nbNodes;
@@ -26,10 +30,12 @@ public class Graph {
 
 
 
-    public Graph(String filePath){
+    public Graph(String filePath,boolean heuristic, boolean dispPath){
+        this.heuristic=heuristic;
+        this.dispPath=dispPath;
         this.filePath=filePath;
         List<String> lines = null;
-        try {
+        try {//parser
             lines = Files.readAllLines(Paths.get(filePath), StandardCharsets.UTF_8);
         } catch (IOException e) {
             e.printStackTrace();
@@ -45,7 +51,14 @@ public class Graph {
         duration = System.nanoTime() - start;
     }
 
+
     final Comparator<Node> comparator = new Comparator<Node>() {
+        /*
+        *
+        * this comparator is used to order the openlist on their F value
+        * (f=g+h)
+        *
+         */
         public int compare(Node node1, Node node2) {
             if (node1.getF() < node2.getF()){
                 return -1;
@@ -58,7 +71,7 @@ public class Graph {
     };
 
 
-    public void aStar(){
+    public void aStar(){//Cor A* algorithm
         //System.out.println("order "+graphOrder);
         Node minPath=new Node();
         List<Node> closedList = new ArrayList<>(graphOrder);
@@ -75,29 +88,27 @@ public class Graph {
             activeNode = openList.get(0);
             openList.remove(0);
             closedList.add(activeNode);
-            if (activeNode.getF()>minDistance){
+            if (activeNode.getF()>minDistance){//we found the shortest path
                 //System.out.println(activeNode.getF());
                 //System.out.println(activeNode.getParent()+" "+activeNode.getName());
                 //System.out.println(minDistance);
                 terminate=true;
             }else {
-                if (activeNode.getParent().size() == graphOrder - 1) {//complete cycle : calculate distance from start node (a) to start node(a)
+                if (activeNode.getParent().size() != graphOrder - 1) {
 
-                } else {
+
                     for (Node nodeT : nodes) {
                         Node node = new Node(nodeT);
-                        if (!contains(activeNode, node) && !node.getName().equals(nodes[0].getName())) {//
+                        if (!contains(activeNode, node) && !node.getName().equals(nodes[0].getName())) {//add the best node (smallest f)
                             double gTest = activeNode.getG() + distance(activeNode, node);
-                            //if(gTest<=minDistance){ //gTest<=node.getG()
                             node.setParent(activeNode.getParent());
                             node.addParent(activeNode.getName());
                             node.setG(gTest);
-                            if(node.getParent().size() <= (graphOrder - 2) ){
-                                node.setH(Math.max(heurisitc(node),heurisitcSimple(node)));//heuristic mst
-
+                            if(heuristic){
+                                node.setH(heurisitc(node));
                             }
                             else {
-                                node.setH(heurisitcSimple(node));//heuristic closest neighbour
+                                node.setH(0);
                             }
 
                             node.setF(gTest + node.getH());
@@ -105,7 +116,7 @@ public class Graph {
                             //System.out.println(node.getParent()+ "  "+" s "+node.getParent().size()+"  " +node.getName()+ node.getF());
                             //}
                         }
-                        if (node.getParent().size() == (graphOrder - 1) ){
+                        if (node.getParent().size() == (graphOrder - 1) ){//complete cycle : calculate distance from start node (a) to start node(a)
                             node.setG(node.getG() + distance(node, nodes[0]));
                             node.setF(node.getG());
                             if(node.getF()<minDistance){
@@ -118,18 +129,22 @@ public class Graph {
                 }
             }
 
-            Collections.sort(openList,comparator);
+            Collections.sort(openList,comparator);//we order the list according to the F values of its elements
            // disp();
         }
         //System.out.println("min path:");
         minPath.addParent(minPath.getName());
         minPath.addParent(nodes[0].getName());
-        //System.out.print(minPath.getParent());
-        //System.out.println(minPath.getF());
+        if(dispPath){
+            System.out.println();
+            System.out.print(minPath.getParent());
+            System.out.print(" total distance : "+minPath.getF()+"  nodes : ");
+        }
+
         this.nbNodes=openList.size()+closedList.size();
     }
 
-    private boolean contains(Node activeNode, Node node) {
+    private boolean contains(Node activeNode, Node node) {//Check if the salesman already passed by Node node
         if (activeNode.getName().equals(node.getName())){
             return true;
         }
@@ -141,7 +156,7 @@ public class Graph {
         return false;
     }
 
-    private double distance(Node node1, Node node2) {
+    private double distance(Node node1, Node node2) {//calculates the euclidean distance between two nodes
         return Math.sqrt(
                       Math.pow(node1.getX()-node2.getX(),2)
                     + Math.pow(node1.getY()-node2.getY(),2)
@@ -149,6 +164,13 @@ public class Graph {
     }
 
     private double heurisitcSimple(Node node){
+        /*
+        *
+        * A simple heuristic that calculate
+        * the distance between the last discover node and the most remote uncovered node
+        *   + the distance between this uncovered node and the starting node (A)
+        *
+         */
         Node closestNode=new Node();
         double minlength=Double.POSITIVE_INFINITY;
         for (Node nodeB : nodes) { //choose the closes en add to parent
@@ -164,13 +186,20 @@ public class Graph {
 
 
     private double heurisitc(Node node) {
+        /*
+         *
+         * A more complicated heuristic that calculate the total length of the edges of
+         * the MST of the remaining nodes plus starting node + last uncovered node.
+         *
+         */
+        int heuristicSize=0;
         double h=0;
         List<Edge>mst=new ArrayList<>();
         List<Node>mstNodes=new ArrayList<>();
         List<Node>subGraph=new ArrayList<>();//Nodes left to add to mst
         subGraph.add(nodes[0]);
         for (Node nodeT:nodes) {
-            if (!contains(node,nodeT)){
+            if (!contains(node,nodeT)){//&&!nodeT.getName().equals(nodes[0].getName())
                 subGraph.add(nodeT);
             }
         }
@@ -178,7 +207,7 @@ public class Graph {
 
         double minlength=Double.POSITIVE_INFINITY;
         Edge shortestEdge=new Edge(new Node("void"),new Node("void"));
-        while (!shortestEdge.getNodeA().getName().equals(nodes[0].getName())){
+        while (subGraph.size()>0){//!shortestEdge.getNodeA().getName().equals(nodes[0].getName())
             minlength=Double.POSITIVE_INFINITY;
             shortestEdge=new Edge(new Node("void"),new Node("void"));
             Node previousNode=new Node();
@@ -192,94 +221,18 @@ public class Graph {
                 }
             }
             mst.add(shortestEdge);
+            heuristicSize+=distance(shortestEdge.getNodeA(),shortestEdge.getNodeB());
             subGraph.remove(shortestEdge.getNodeA());
             shortestEdge.getNodeA().setPreviousbis(previousNode);
             mstNodes.add(shortestEdge.getNodeA());
         }
 
-        return heurisitcSize(mstNodes, nodes[0],node,0);
+        return heuristicSize;
 
-        /*Stack<Node> stack=new Stack();
-        stack.add(node);
-        //List<Boolean>visited=new ArrayList<>(mstNodes.size());
-        for (int i = 0; i <mstNodes.size(); i++) {
-            mstNodes.get(i).setPrevious(null);
-            mstNodes.get(i).setVisited(false);
-        }
-        //visited.set(0,false);
-        while (!stack.isEmpty())
-        {
-            Node element=stack.pop();
-
-            ArrayList<Node> neighbours=neighbours(mst,element);
-            for (int i = 0; i < neighbours.size(); i++) {
-                if(neighbours.get(i)!=null && !neighbours.get(i).isVisited())
-                {
-                    neighbours.get(i).setPrevious(element);
-                    stack.add(neighbours.get(i));
-                    neighbours.get(i).setVisited(true);
-
-                }
-            }
-        }*/
-
-
-        /*Node nodeA=new Node(node);
-        nodeA.setParent(node.getParent());
-        Node closestNode=new Node();
-        closestNode.setName("none");
-        while (!closestNode.getName().equals(nodes[0].getName())){
-            closestNode=new Node();
-            double minlength=Double.POSITIVE_INFINITY;
-            for (Node nodeT : nodes) { //choose the closes en add to parent
-                Node nodeB = new Node(nodeT);
-                if (nodeB.getName().equals(nodes[0].getName())||!contains(nodeA,nodeB)){
-                    if (distance(nodeA,nodeB)<minlength){
-                        minlength=distance(nodeA,nodeB);
-                        closestNode=nodeB;
-                    }
-                }
-            }
-            closestNode.setParent(nodeA.getParent());
-            nodeA=new Node(closestNode);
-            nodeA.setParent(closestNode.getParent());
-            nodeA.addParent(closestNode.getName());
-            h+=minlength;
-        }*/
-    }
-
-    private double heurisitcSize(List<Node> mstNodes, Node start, Node end,double size) {
-        if(start.getName().equals(end.getName())){
-            return size;
-        }
-        int i=0;
-        boolean found=false;
-        while (!found){
-            if(mstNodes.get(i).getName().equals(start.getName())){
-                found=true;
-                size+=distance(start,mstNodes.get(i).getPreviousbis());
-
-            }
-            i++;
-        }
-        return heurisitcSize(mstNodes,mstNodes.get(i-1).getPreviousbis(),end,size);
-    }
-
-    private ArrayList neighbours(List<Edge> mst, Node element) {
-        ArrayList<Node>neighbours=new ArrayList<>();
-        for (int i = 0; i < mst.size(); i++) {
-            if (mst.get(i).getNodeA().getName().equals(element.getName()) ){//xor
-                neighbours.add(mst.get(i).getNodeB());
-            }
-            if (mst.get(i).getNodeB().getName().equals(element.getName()) ){
-                neighbours.add(mst.get(i).getNodeA());
-            }
-        }
-        return neighbours;
     }
 
 
-    public void disp(){
+    public void disp(){//display the path taken
         System.out.println();
         for (int i = 0; i < nodes.length; i++) {
             System.out.println();
@@ -295,5 +248,34 @@ public class Graph {
         }
     }
 
+    /*private double heurisitcSize(List<Node> mstNodes, Node start, Node end,double size) {
+        if(start.getName().equals(end.getName())){
+            return size;
+        }
+        int i=0;
+        boolean found=false;
+        while (!found){
+            if(mstNodes.get(i).getName().equals(start.getName())){
+                found=true;
+                size+=distance(start,mstNodes.get(i).getPreviousbis());
+
+            }
+            i++;
+        }
+        return heurisitcSize(mstNodes,mstNodes.get(i-1).getPreviousbis(),end,size);
+    }*/
+
+    /*private ArrayList neighbours(List<Edge> mst, Node element) {
+        ArrayList<Node>neighbours=new ArrayList<>();
+        for (int i = 0; i < mst.size(); i++) {
+            if (mst.get(i).getNodeA().getName().equals(element.getName()) ){//xor
+                neighbours.add(mst.get(i).getNodeB());
+            }
+            if (mst.get(i).getNodeB().getName().equals(element.getName()) ){
+                neighbours.add(mst.get(i).getNodeA());
+            }
+        }
+        return neighbours;
+    }*/
 }
 

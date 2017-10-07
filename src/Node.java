@@ -3,6 +3,8 @@ import java.util.List;
 
 /**
  * Created by sami- on 23/09/2017.
+ *
+ * This class describes one node of the graph
  */
 public class Node {
     private String name;
@@ -53,7 +55,7 @@ public class Node {
         this.parent=new ArrayList<>();
     }
 
-    public Node(Node nodebis) {
+    public Node(Node nodebis) {//my a clone of the node
         this.name = nodebis.name;
         this.x = nodebis.getX();
         this.y = nodebis.getY();

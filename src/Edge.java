@@ -1,5 +1,7 @@
 /**
  * Created by sami- on 28/09/2017.
+ *
+ * This class is used for the heuristic only: to built the MST
  */
 public class Edge {
     private Node nodeA;
